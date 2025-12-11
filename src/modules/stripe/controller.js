@@ -2,6 +2,7 @@ const { stripe, STRIPE_CLIENT_ID } = require('../../config/stripe.js');
 const prisma = require('../../config/database.js');
 const { successResponse, errorResponse } = require('../../utils/response.js');
 const { generateToken } = require('../../middleware/auth.js');
+const { Buffer } = require('buffer');
 
 /**
  * Create connection token for Stripe Terminal
