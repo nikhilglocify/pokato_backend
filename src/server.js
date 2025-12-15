@@ -12,6 +12,7 @@ const prisma = require('./config/database.js');
 const stripeRoutes = require('./modules/stripe/routes.js');
 const readerRoutes = require('./modules/readers/routes.js');
 const paymentRoutes = require('./modules/payment/routes.js');
+const userRoutes = require('./modules/user/routes.js');
 
 // Import middleware
 const logger = require('./middleware/logger.js');
@@ -57,6 +58,7 @@ app.get('/health', async (req, res) => {
 app.use('/api/stripe', stripeRoutes);
 app.use('/api/readers', readerRoutes);
 app.use('/api/payments', paymentRoutes);
+app.use('/api/user', userRoutes);
 
 // Error handling middleware (must be last)
 app.use(errorHandler);
