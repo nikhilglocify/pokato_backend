@@ -64,6 +64,57 @@ app.use('/api/user', userRoutes);
 app.use(errorHandler);
 
 /**
+ * Validate required environment variables before starting server
+ */
+function validateEnvironmentVariables() {
+  const requiredEnvVars = {
+    JWT_SECRET: {
+      name: 'JWT_SECRET',
+      description: 'Secret key for signing JWT tokens',
+      generateCommand: 'openssl rand -base64 32',
+    },
+  };
+
+  const missingVars = [];
+  const weakVars = [];
+
+  for (const [key, config] of Object.entries(requiredEnvVars)) {
+    const value = process.env[key];
+    
+    if (!value) {
+      missingVars.push(config);
+    } else if (key === 'JWT_SECRET' && (value === 'your-secret-key-change-in-production' || value.length < 32)) {
+      weakVars.push(config);
+    }
+  }
+
+  if (missingVars.length > 0) {
+    console.error('❌ Missing required environment variables:');
+    missingVars.forEach((config) => {
+      console.error(`   - ${config.name}: ${config.description}`);
+      if (config.generateCommand) {
+        console.error(`     💡 Generate: ${config.generateCommand}`);
+      }
+    });
+    console.error('\n💡 Please set these variables in your .env file');
+    return false;
+  }
+
+  if (weakVars.length > 0) {
+    console.warn('⚠️  WARNING: Weak environment variables detected:');
+    weakVars.forEach((config) => {
+      console.warn(`   - ${config.name}: Appears to be default or weak value`);
+      if (config.generateCommand) {
+        console.warn(`     💡 Generate secure value: ${config.generateCommand}`);
+      }
+    });
+    console.warn('⚠️  This is a security risk. Please use strong, randomly generated secrets.\n');
+  }
+
+  return true;
+}
+
+/**
  * Check database connectivity before starting server
  */
 async function checkDatabaseConnection() {
@@ -105,9 +156,19 @@ async function gracefulShutdown() {
 process.on('SIGINT', gracefulShutdown);
 process.on('SIGTERM', gracefulShutdown);
 
-// Start server with database check
+// Start server with validation checks
 async function startServer() {
-  // Check database connection first
+  // Validate environment variables first
+  console.log('🔍 Validating environment variables...');
+  const envValid = validateEnvironmentVariables();
+  
+  if (!envValid) {
+    console.error('❌ Cannot start server without required environment variables');
+    process.exit(1);
+  }
+  console.log('✅ Environment variables validated');
+  
+  // Check database connection
   const dbConnected = await checkDatabaseConnection();
   
   if (!dbConnected) {

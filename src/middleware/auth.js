@@ -1,7 +1,25 @@
 const jwt = require('jsonwebtoken');
 const prisma = require('../config/database.js');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+// Validate JWT_SECRET is set - throw error if missing
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error(
+    '❌ JWT_SECRET environment variable is required but not set.\n' +
+    '💡 Please set JWT_SECRET in your .env file.\n' +
+    '💡 Generate a secure secret: openssl rand -base64 32\n' +
+    '💡 Example: JWT_SECRET=your-super-secret-key-here'
+  );
+}
+
+// Warn if using default/weak secret (security check)
+if (JWT_SECRET === 'your-secret-key-change-in-production' || JWT_SECRET.length < 32) {
+  console.warn(
+    '⚠️  WARNING: JWT_SECRET appears to be weak or default value.\n' +
+    '⚠️  This is a security risk. Please use a strong, randomly generated secret.\n' +
+    '💡 Generate a secure secret: openssl rand -base64 32'
+  );
+}
 
 /**
  * Authentication middleware
@@ -141,7 +159,7 @@ const optionalAuth = async (req, res, next) => {
  * Generate JWT token for user
  */
 const generateToken = (payload) => {
-  const expiresIn = process.env.JWT_EXPIRES_IN || '7d';
+  const expiresIn = process.env.JWT_EXPIRES_IN || '1d';
   return jwt.sign(payload, JWT_SECRET, { expiresIn });
 };
 
