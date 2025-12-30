@@ -9,7 +9,7 @@ const { successResponse, errorResponse } = require('../../utils/response.js');
 const createPaymentIntent = async (req, res, next) => {
   try {
     const userId = req.user.userId;
-    const { amount, currency = 'usd', metadata = {} } = req.body;
+    const { amount, currency = 'usd', metadata = {}, customerDetails = {} } = req.body;
 
     // Validate amount
     if (!amount || amount <= 0) {
@@ -36,19 +36,47 @@ const createPaymentIntent = async (req, res, next) => {
     }
 
     const accountId = user.stripeAccountId;
+    
 
+    // Build metadata with customer details if provided
+    const paymentMetadata = {
+      userId,
+      ...metadata,
+    };
+
+    // Add customer details to metadata if provided
+    if (customerDetails.email) {
+      paymentMetadata.customerEmail = customerDetails.email;
+    }
+    if (customerDetails.name) {
+      paymentMetadata.customerName = customerDetails.name;
+    }
+    if (customerDetails.phone) {
+      paymentMetadata.customerPhone = customerDetails.phone;
+    }
+    if (customerDetails.zip) {
+      paymentMetadata.customerZip = customerDetails.zip;
+    }
+
+    // Use customer email for receipt if provided, otherwise use default
+
+
+    let intentData={
+      amount: Math.round(amount * 100), // Convert to cents
+      currency,
+      payment_method_types: ['card_present'],
+      capture_method: 'automatic',
+      metadata: paymentMetadata,
+      application_fee_amount: 5,
+      
+
+    }
+    if(customerDetails.email){
+      intentData.receipt_email = customerDetails.email;
+    }
     // Create payment intent
     const paymentIntent = await stripe.paymentIntents.create(
-      {
-        amount: Math.round(amount * 100), // Convert to cents
-        currency,
-        payment_method_types: ['card_present'],
-        capture_method: 'automatic',
-        metadata: {
-          userId,
-          ...metadata,
-        },
-      },
+      intentData,
       {
         // Create PI inside the connected account
         stripeAccount: accountId,

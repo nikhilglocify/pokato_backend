@@ -73,10 +73,20 @@ const getOAuthUrl = async (req, res, next) => {
       });
 
       if (user?.stripeAccountId && user?.stripeAccountStatus === 'active') {
+        const token = generateToken({
+          userId: user.id,
+          email: user.email,
+        });
         return res.json(successResponse({
           url: null,
           alreadyConnected: true,
           accountId: user.stripeAccountId,
+          userId: user.id, // Include userId for frontend
+          email: user.email, // Include email for frontend
+          status: user.stripeAccountStatus,
+          chargesEnabled: user.stripeDetails?.charges_enabled,
+          detailsSubmitted: user.stripeDetails?.details_submitted,
+          token // JWT token instead of Firebase custom token
         }, 'Stripe account already connected'));
       }
     }
