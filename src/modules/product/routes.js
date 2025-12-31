@@ -1,7 +1,9 @@
-const router=require('express').Router();
-const { authenticate } = require('../../middleware/auth');
-const {getProducts}=require('./controller');
+const express = require('express');
+const { authenticate } = require('../../middleware/auth.js');
+const { getProducts } = require('./controller.js');
 
-router.get('/',authenticate,getProducts);
+const router = express.Router();
 
-module.exports=router;
+router.get('/', authenticate, getProducts);
+
+module.exports = router;
