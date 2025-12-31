@@ -8,7 +8,7 @@ if (!STRIPE_SECRET_KEY) {
 }
 
 const stripe = new Stripe(STRIPE_SECRET_KEY, {
-  apiVersion: '2023-10-16',
+  apiVersion: '2024-11-20.acacia', // Latest stable API version
 });
 
 const STRIPE_CLIENT_ID = process.env.STRIPE_CLIENT_ID;
