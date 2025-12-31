@@ -48,7 +48,7 @@ const authenticate = async (req, res, next) => {
     }
 
     const token = authHeader.substring(7); // Remove 'Bearer ' prefix
-    
+    console.log("token",token)
     try {
       // Verify token signature and expiration
       // Token payload contains: { userId, email }
@@ -118,6 +118,7 @@ const optionalAuth = async (req, res, next) => {
     
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.substring(7);
+      console.log("token",token)
       try {
         const decoded = jwt.verify(token, JWT_SECRET);
         
@@ -138,6 +139,7 @@ const optionalAuth = async (req, res, next) => {
             email: user.email,
             stripeAccountId: user.stripeAccountId,
             stripeAccountStatus: user.stripeAccountStatus,
+           
           };
         } else {
           req.user = null;
@@ -159,7 +161,7 @@ const optionalAuth = async (req, res, next) => {
  * Generate JWT token for user
  */
 const generateToken = (payload) => {
-  const expiresIn = process.env.JWT_EXPIRES_IN || '1d';
+  const expiresIn = process.env.JWT_EXPIRES_IN || '7d';
   return jwt.sign(payload, JWT_SECRET, { expiresIn });
 };
 
