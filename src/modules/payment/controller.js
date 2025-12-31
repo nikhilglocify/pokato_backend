@@ -534,6 +534,8 @@ const createPaymentIntentFromProducts = async (req, res, next) => {
           customer: customerId,
           pending_invoice_items_behavior: 'include',
           auto_advance: false,
+          collection_method: 'send_invoice',
+          due_date: Math.floor(Date.now() / 1000) + 86400, // 1 day from now
           // collection_method: 'charge_automatically',
           metadata: {
             userId,
@@ -632,10 +634,7 @@ const createPaymentIntentFromProducts = async (req, res, next) => {
       }
     }
 
-    console.log('invoiceItemIds', invoiceItemIds);
-
-    // Step 3: Create Invoice (will automatically include pending invoice items)
-    console.log('invoice.id', invoice.id);
+    
 
     
 
