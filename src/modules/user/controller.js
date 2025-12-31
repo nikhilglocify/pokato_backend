@@ -1,5 +1,5 @@
-const prisma = require('../../config/database.js');
 const { successResponse, errorResponse } = require('../../utils/response.js');
+const { getUserById } = require('./services.js');
 
 /**
  * Get current authenticated user's basic profile
@@ -16,16 +16,8 @@ const getCurrentUser = async (req, res, next) => {
         .json(errorResponse('Authentication required', 'unauthenticated'));
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        email: true,
-        displayName: true,
-        stripeAccountId: true,
-        stripeAccountStatus: true,
-      },
-    });
+    // Call service to get user data
+    const user = await getUserById(userId);
 
     if (!user) {
       return res
