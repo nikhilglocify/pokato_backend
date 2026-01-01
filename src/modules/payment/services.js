@@ -127,6 +127,9 @@ const createPaymentIntentService = async (accountId, paymentData) => {
 const findOrCreateCustomerService = async (accountId, customerDetails, userId) => {
   try {
     if (!customerDetails.email) {
+      throw new Error('Email is required to create a customer');
+      // const customer = await stripe.customers.create({}, { stripeAccount: accountId })
+      // return customer.id;
       return null;
     }
 
@@ -163,7 +166,8 @@ const findOrCreateCustomerService = async (accountId, customerDetails, userId) =
   } catch (error) {
     // Log error but don't throw - invoice can still be created without customer
     console.error('Error creating/retrieving customer:', error);
-    return null;
+    throw new Error(error.message || 'Error creating/retrieving customer');
+    // return null;
   }
 };
 
