@@ -128,9 +128,7 @@ const findOrCreateCustomerService = async (accountId, customerDetails, userId) =
   try {
     if (!customerDetails.email) {
       throw new Error('Email is required to create a customer');
-      // const customer = await stripe.customers.create({}, { stripeAccount: accountId })
-      // return customer.id;
-      return null;
+    
     }
 
     // Try to find existing customer by email
@@ -711,6 +709,54 @@ const getPaymentStatsService = async (accountId, queryParams) => {
   }
 };
 
+/**
+ * Get transactions (charges) for a specific date
+ * @param {string} accountId - Stripe account ID
+ * @param {string|null} date - Date string in YYYY-MM-DD format (optional, defaults to today)
+ * @returns {Promise<Array>} Array of charge/transaction objects
+ */
+const getTransactionsService = async (accountId, date = null) => {
+  try {
+    // Parse date to UTC
+    const selectedDate = parseDateToUTC(date);
+
+    // Validate date
+    if (isNaN(selectedDate.getTime())) {
+      const error = new Error('Invalid date format. Use ISO date format (e.g., 2025-12-15)');
+      error.statusCode = 400;
+      error.code = 'invalid-argument';
+      throw error;
+    }
+
+    // Calculate date range for the selected day (UTC boundaries)
+    const dayStart = new Date(selectedDate);
+    dayStart.setUTCHours(0, 0, 0, 0);
+    const dayEnd = new Date(selectedDate);
+    dayEnd.setUTCHours(23, 59, 59, 999);
+
+    // Convert to Unix timestamps (seconds)
+    const startTimestamp = Math.floor(dayStart.getTime() / 1000);
+    const endTimestamp = Math.floor(dayEnd.getTime() / 1000);
+
+    // Fetch charges for the day
+    const charges = await fetchChargesFromStripeService(
+      accountId,
+      startTimestamp,
+      endTimestamp
+    );
+
+    // Sort charges by created time (newest first)
+    const sortedCharges = charges.sort((a, b) => b.created - a.created);
+
+    return sortedCharges;
+  } catch (error) {
+    if (error.statusCode) {
+      throw error;
+    }
+    throw new Error(error.message || 'Error getting transactions');
+  }
+};
+
 module.exports = {
   validateStripeAccount,
   buildPaymentMetadata,
@@ -729,5 +775,6 @@ module.exports = {
   calculateSummaryService,
   fillMissingDaysService,
   getPaymentStatsService,
+  getTransactionsService,
 };
 

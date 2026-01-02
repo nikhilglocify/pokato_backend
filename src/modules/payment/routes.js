@@ -1,6 +1,6 @@
 const express = require('express');
 const { authenticate } = require('../../middleware/auth.js');
-const { createPaymentIntent, createPaymentIntentFromProducts, getPaymentStats } = require('./controller.js');
+const { createPaymentIntent, createPaymentIntentFromProducts, getPaymentStats, getTransactions } = require('./controller.js');
 
 const router = express.Router();
 
@@ -12,5 +12,8 @@ router.post('/create-intent-from-products', authenticate, createPaymentIntentFro
 
 // Get payment statistics - requires authentication
 router.get('/stats', authenticate, getPaymentStats);
+
+// Get transactions for a date - requires authentication
+router.get('/transactions', authenticate, getTransactions);
 
 module.exports = router;

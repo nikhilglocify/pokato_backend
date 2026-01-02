@@ -10,6 +10,7 @@ const {
   createPaymentIntentFromInvoiceService,
   buildPaymentMetadata,
   getPaymentStatsService,
+  getTransactionsService,
 } = require('./services.js');
 
 /**
@@ -204,8 +205,33 @@ const createPaymentIntentFromProducts = async (req, res, next) => {
   }
 };
 
+/**
+ * Get transactions for a specific date
+ * GET /api/payments/transactions?date=2025-12-15
+ */
+const getTransactions = async (req, res, next) => {
+  try {
+    const userId = req.user.userId;
+    const { date } = req.query;
+
+    // Validate Stripe account and get account ID
+    const accountId = await validateStripeAccount(userId);
+
+    // Call service to get transactions
+    const transactions = await getTransactionsService(accountId, date || null);
+    console.log("transactions",transactions)
+
+    res.json(
+      successResponse(transactions, 'Transactions retrieved successfully'),
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createPaymentIntent,
   createPaymentIntentFromProducts,
   getPaymentStats,
+  getTransactions,
 };
