@@ -413,7 +413,7 @@ const createPaymentIntentFromInvoiceService = async (
   customerId
 ) => {
   try {
-    const { total, currency, id: invoiceId } = invoiceData;
+    const { total, currency } = invoiceData;
 
     const intentData = {
       amount: total, // Already in cents from invoice
@@ -748,12 +748,93 @@ const getTransactionsService = async (accountId, date = null) => {
     // Sort charges by created time (newest first)
     const sortedCharges = charges.sort((a, b) => b.created - a.created);
 
-    return sortedCharges;
+    // Map charges to transaction format with refunded status
+    return sortedCharges.map(charge => ({
+      id: charge.id,
+      amount: charge.amount, // Already in cents
+      currency: charge.currency,
+      status: charge.status,
+      created: charge.created,
+      customer: charge.customer,
+      payment_method: charge.payment_method,
+      receipt_url: charge.receipt_url,
+      description: charge.description,
+      receipt_email: charge.receipt_email || charge.billing_details?.email || charge.metadata?.customerEmail || null,
+      customerEmail: charge.billing_details?.email || charge.metadata?.customerEmail || null,
+      customerName: charge.billing_details?.name || charge.metadata?.customerName || null,
+      paid: charge.paid || false,
+      refunded: charge.refunded || charge.amount_refunded > 0 || false,
+      metadata: charge.metadata || {},
+    }));
   } catch (error) {
     if (error.statusCode) {
       throw error;
     }
     throw new Error(error.message || 'Error getting transactions');
+  }
+};
+
+/**
+ * Fetch a charge from Stripe
+ * @param {string} accountId - Stripe account ID
+ * @param {string} chargeId - Charge ID
+ * @returns {Promise<object>} Charge object
+ */
+const getChargeService = async (accountId, chargeId) => {
+  try {
+    const charge = await stripe.charges.retrieve(chargeId, {
+      stripeAccount: accountId,
+    });
+    return charge;
+  } catch (error) {
+    throw new Error(error.message || 'Error fetching charge from Stripe');
+  }
+};
+
+/**
+ * Create a refund for a charge
+ * @param {string} accountId - Stripe account ID
+ * @param {string} chargeId - Charge ID to refund
+ * @param {object} refundData - Refund data
+ * @param {number|null} refundData.amount - Amount to refund in cents (optional, null for full refund)
+ * @param {string} refundData.reason - Refund reason (optional: 'duplicate', 'fraudulent', 'requested_by_customer')
+ * @returns {Promise<object>} Refund object
+ */
+const createRefundService = async (accountId, chargeId, refundData = {}) => {
+  try {
+    const { amount = null, reason = null } = refundData;
+
+    // Build refund parameters
+    const refundParams = {
+      charge: chargeId,
+    };
+
+    // Add amount if specified (partial refund)
+    if (amount && amount > 0) {
+      refundParams.amount = Math.round(amount);
+    }
+
+    // Add reason if specified
+    if (reason && ['duplicate', 'fraudulent', 'requested_by_customer'].includes(reason)) {
+      refundParams.reason = reason;
+    }
+
+    // Create refund
+    const refund = await stripe.refunds.create(refundParams, {
+      stripeAccount: accountId,
+    });
+
+    return {
+      id: refund.id,
+      amount: refund.amount,
+      currency: refund.currency,
+      status: refund.status,
+      charge: refund.charge,
+      created: refund.created,
+      reason: refund.reason,
+    };
+  } catch (error) {
+    throw new Error(error.message || 'Error creating refund');
   }
 };
 
@@ -776,5 +857,7 @@ module.exports = {
   fillMissingDaysService,
   getPaymentStatsService,
   getTransactionsService,
+  createRefundService,
+  getChargeService,
 };
 

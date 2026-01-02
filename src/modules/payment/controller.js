@@ -11,6 +11,8 @@ const {
   buildPaymentMetadata,
   getPaymentStatsService,
   getTransactionsService,
+  createRefundService,
+  getChargeService,
 } = require('./services.js');
 
 /**
@@ -229,9 +231,84 @@ const getTransactions = async (req, res, next) => {
   }
 };
 
+/**
+ * Create a refund for a transaction
+ * POST /api/payments/refund
+ */
+const createRefund = async (req, res, next) => {
+  try {
+    const userId = req.user.userId;
+    const { chargeId, amount, reason } = req.body;
+
+    // Input validation
+    if (!chargeId || typeof chargeId !== 'string') {
+      return res
+        .status(400)
+        .json(
+          errorResponse('chargeId is required and must be a string', 'invalid-argument'),
+        );
+    }
+
+    // Validate Stripe account and get account ID
+    const accountId = await validateStripeAccount(userId);
+
+    // Fetch charge from Stripe to get the amount
+    const charge = await getChargeService(accountId, chargeId);
+    const chargeAmount = charge.amount; // Amount in cents
+    const amountRefunded = charge.amount_refunded || 0; // Already refunded amount
+    const availableAmount = chargeAmount - amountRefunded; // Available amount for refund
+
+    // Validate amount if provided (must be positive and not exceed available amount)
+    // let refundAmount = null;
+    // if (amount !== undefined && amount !== null) {
+    //   if (typeof amount !== 'number' || amount <= 0) {
+    //     return res
+    //       .status(400)
+    //       .json(
+    //         errorResponse('Amount must be a positive number', 'invalid-argument'),
+    //       );
+    //   }
+    //   if (amount > availableAmount) {
+    //     return res
+    //       .status(400)
+    //       .json(
+    //         errorResponse(
+    //           `Amount exceeds available refund amount. Available: ${availableAmount / 100} ${charge.currency.toUpperCase()}`,
+    //           'invalid-argument',
+    //         ),
+    //       );
+    //   }
+    //   refundAmount = Math.round(amount);
+    // }
+
+    // Validate reason if provided
+    if (reason && !['duplicate', 'fraudulent', 'requested_by_customer'].includes(reason)) {
+      return res
+        .status(400)
+        .json(
+          errorResponse(
+            'Reason must be one of: duplicate, fraudulent, requested_by_customer',
+            'invalid-argument',
+          ),
+        );
+    }
+
+    // Call service to create refund
+    const refund = await createRefundService(accountId, chargeId, {
+      amount: availableAmount,
+      reason: reason || null,
+    });
+
+    res.json(successResponse(refund, 'Refund processed successfully'));
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createPaymentIntent,
   createPaymentIntentFromProducts,
   getPaymentStats,
   getTransactions,
+  createRefund,
 };
