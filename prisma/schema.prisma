@@ -9,7 +9,7 @@ datasource db {
 
 model User {
   id                  String         @id @default(uuid())
-  email               String         @unique
+  email               String
   displayName         String?
   stripeAccountId     String?        @unique
   stripeAccountStatus String?        @default("not_connected")

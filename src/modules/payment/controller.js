@@ -218,10 +218,9 @@ const getTransactions = async (req, res, next) => {
 
     // Validate Stripe account and get account ID
     const accountId = await validateStripeAccount(userId);
-
+                                    
     // Call service to get transactions
     const transactions = await getTransactionsService(accountId, date || null);
-    console.log("transactions",transactions)
 
     res.json(
       successResponse(transactions, 'Transactions retrieved successfully'),

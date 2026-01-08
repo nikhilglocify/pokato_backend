@@ -175,7 +175,8 @@ const determineAccountStatus = (account) => {
 const findOrCreateUserFromOAuth = async (oauthData, account, status) => {
   try {
     const { accountId, accessToken, refreshToken, scope, tokenType, publishableKey } = oauthData;
-
+console.log("stripe details",account)
+console.log("oauthData",oauthData)
     // Find existing user by Stripe Account ID
     const existingUser = await prisma.user.findUnique({
       where: { stripeAccountId: accountId },
@@ -184,7 +185,7 @@ const findOrCreateUserFromOAuth = async (oauthData, account, status) => {
 
     let user;
     let isNewUser = false;
-
+console.log("existingUser",existingUser)
     if (existingUser) {
       // Existing user - update
       user = await prisma.user.update({
@@ -276,7 +277,9 @@ const handleOAuthCallbackService = async (code, state) => {
       chargesEnabled: account.charges_enabled,
       detailsSubmitted: account.details_submitted,
     };
+   
   } catch (error) {
+    console.log("ERROR FROM HANDLE OAUTH CALLBACK SERVICE",error)
     throw new Error(error.message || 'Error handling OAuth callback');
   }
 };
