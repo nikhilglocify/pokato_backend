@@ -6,6 +6,7 @@ const {
   findOrCreateCustomerService,
   createInvoiceService,
   createInvoiceItemsService,
+  addTipLineItemService,
   finalizeInvoiceService,
   attachPaymentIntentToInvoiceService,
   createPaymentIntentFromInvoiceService,
@@ -104,6 +105,7 @@ const createPaymentIntentFromProducts = async (req, res, next) => {
     const { 
       cartItems = [], 
       customerDetails = {},
+      tipAmount = 0,
       readerId,
       connectionType,
       locationId,
@@ -150,6 +152,17 @@ const createPaymentIntentFromProducts = async (req, res, next) => {
       }
     }
 
+    // Validate tipAmount if provided
+    if (tipAmount && (typeof tipAmount !== 'number' || tipAmount < 0)) {
+      return res
+        .status(400)
+        .json(
+          errorResponse(
+            'tipAmount must be a non-negative number',
+            'invalid-argument',
+          ),
+        );
+    }
 
     // Validate Stripe account and get account ID
     const accountId = await validateStripeAccount(userId);
@@ -176,20 +189,33 @@ const createPaymentIntentFromProducts = async (req, res, next) => {
       userId
     );
 
-    // Step 4: Finalize invoice
+    // Step 4: Add tip as line item if provided
+    if (tipAmount > 0) {
+      await addTipLineItemService(
+        accountId,
+        invoice.id,
+        customerId,
+        tipAmount,
+        userId
+      );
+    }
+
+    // Step 5: Finalize invoice
     const finalizedInvoice = await finalizeInvoiceService(accountId, invoice.id);
 
-    // Step 5: Build payment metadata
+    // Step 6: Build payment metadata (include tip info if present)
     const paymentMetadata = buildPaymentMetadata(
       userId,
       {
         invoiceId: invoice.id,
         paymentType: 'products',
+        tipAmount: tipAmount > 0 ? tipAmount : undefined,
+        tippingMethod: tipAmount > 0 ? 'app-based' : undefined,
       },
       customerDetails
     );
 
-    // Step 6: Create PaymentIntent from invoice
+    // Step 7: Create PaymentIntent from invoice
     const paymentIntent = await createPaymentIntentFromInvoiceService(
       accountId,
       finalizedInvoice,
@@ -197,7 +223,7 @@ const createPaymentIntentFromProducts = async (req, res, next) => {
       customerId
     );
 
-    // Step 7: Try to attach PaymentIntent to invoice (optional, for receipts)
+    // Step 8: Try to attach PaymentIntent to invoice (optional, for receipts)
     try {
       await attachPaymentIntentToInvoiceService(
         accountId,
@@ -255,7 +281,7 @@ const getTransactions = async (req, res, next) => {
 const createRefund = async (req, res, next) => {
   try {
     const userId = req.user.userId;
-    const { chargeId, amount, reason } = req.body;
+    const { chargeId, reason } = req.body;
 
     // Input validation
     if (!chargeId || typeof chargeId !== 'string') {

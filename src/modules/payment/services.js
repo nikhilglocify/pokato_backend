@@ -390,6 +390,47 @@ const createInvoiceItemService = async (accountId, itemData) => {
 };
 
 /**
+ * Add tip as a line item to invoice
+ * @param {string} accountId - Stripe account ID
+ * @param {string} invoiceId - Invoice ID
+ * @param {string} customerId - Customer ID
+ * @param {number} tipAmount - Tip amount in dollars
+ * @param {string} userId - User ID for metadata
+ * @returns {Promise<object>} Created tip invoice item
+ */
+const addTipLineItemService = async (accountId, invoiceId, customerId, tipAmount, userId) => {
+  try {
+    if (!tipAmount || tipAmount <= 0) {
+      console.log('⏭️ No tip amount provided, skipping tip line item');
+      return null;
+    }
+
+    console.log(`💰 Adding tip line item: $${tipAmount.toFixed(2)} to invoice ${invoiceId}`);
+
+    const tipInvoiceItem = await stripe.invoiceItems.create(
+      {
+        customer: customerId,
+        invoice: invoiceId,
+        amount: Math.round(tipAmount * 100), // Convert dollars to cents
+        currency: 'usd',
+        description: 'Tip',
+        metadata: {
+          userId,
+          itemType: 'tip',
+        },
+      },
+      { stripeAccount: accountId }
+    );
+
+    console.log(`✅ Tip line item created: ${tipInvoiceItem.id}`);
+    return tipInvoiceItem;
+  } catch (error) {
+    console.error('❌ Error adding tip line item:', error);
+    throw new Error(error.message || 'Error adding tip line item to invoice');
+  }
+};
+
+/**
  * Delete invoice item
  * @param {string} accountId - Stripe account ID
  * @param {string} itemId - Invoice item ID
@@ -999,6 +1040,7 @@ module.exports = {
   createInvoiceService,
   validatePriceIsOneTime,
   createInvoiceItemService,
+  addTipLineItemService,
   deleteInvoiceItemService,
   createInvoiceItemsService,
   finalizeInvoiceService,
