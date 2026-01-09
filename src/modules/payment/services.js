@@ -2,6 +2,125 @@ const { stripe } = require('../../config/stripe.js');
 const prisma = require('../../config/database.js');
 
 /**
+ * Ensure location has tipping configuration for internet readers
+ * This function checks if the reader's location has a tipping config,
+ * and creates one if it doesn't exist.
+ * 
+ * @param {string} accountId - Stripe account ID
+ * @param {string} readerId - Reader ID (optional, only needed if locationId not provided)
+ * @param {string} connectionType - Connection type (internet, tapToPay, bluetooth)
+ * @param {string} locationId - Location ID (optional, if provided skips reader retrieval)
+ * @returns {Promise<void>}
+ */
+const ensureLocationTippingConfig = async (accountId, readerId, connectionType, locationId) => {
+  try {
+    // Only process for internet readers
+    if (connectionType !== 'internet') {
+      console.log(`⏭️ Skipping tipping config setup - connection type is ${connectionType}, not internet`);
+      return;
+    }
+
+    // If locationId is provided, use it directly; otherwise retrieve from reader
+    let finalLocationId = locationId;
+
+    if (!finalLocationId) {
+      if (!readerId) {
+        console.log('⚠️ No reader ID or location ID provided, skipping tipping config setup');
+        return;
+      }
+
+      console.log(`🔧 No locationId provided, retrieving reader ${readerId} to get location...`);
+
+      // Step 1: Retrieve reader to get location ID
+      let reader;
+      try {
+        reader = await stripe.terminal.readers.retrieve(
+          readerId,
+          { stripeAccount: accountId }
+        );
+        console.log(`✅ Reader retrieved: ${reader.id}, location: ${reader.location}`);
+      } catch (readerError) {
+        console.warn(`⚠️ Failed to retrieve reader ${readerId}:`, readerError.message);
+        return; // Continue with payment creation
+      }
+
+      if (!reader.location) {
+        console.warn('⚠️ Reader has no location assigned, skipping tipping config setup');
+        return;
+      }
+
+      finalLocationId = reader.location;
+    } else {
+      console.log(`🔧 Using provided locationId: ${finalLocationId}, skipping reader retrieval`);
+    }
+
+    // Step 2: Retrieve location to check for existing config
+    let location;
+    try {
+      location = await stripe.terminal.locations.retrieve(
+        finalLocationId,
+        { stripeAccount: accountId }
+      );
+      console.log("locationData",location)
+      console.log(`✅ Location retrieved: ${location.id}, display_name: ${location.display_name}`);
+    } catch (locationError) {
+      console.warn(`⚠️ Failed to retrieve location ${finalLocationId}:`, locationError.message);
+      return; // Continue with payment creation
+    }
+
+
+    // Step 3: Check if location already has a configuration
+    if (location.configuration_overrides) {
+      console.log(`✅ Location already has tipping config: ${location.configuration_overrides}`);
+      return; // Config exists, reuse it
+    }
+
+    console.log('🆕 No tipping config found, creating new configuration...');
+
+    // Step 4: Create new tipping configuration
+    let configuration;
+    try {
+      configuration = await stripe.terminal.configurations.create(
+        {
+          tipping: {
+            usd: {
+              percentages: [15, 20, 25],
+              fixed_amounts: [100, 200, 300], // $1, $2, $3 in cents
+              smart_tip_threshold: 1000, // $10 in cents
+            },
+          },
+        },
+        { stripeAccount: accountId }
+      );
+      console.log(`✅ Tipping configuration created: ${configuration.id}`);
+    } catch (configError) {
+      console.warn('⚠️ Failed to create tipping configuration:', configError.message);
+      return; // Continue with payment creation
+    }
+
+    // Step 5: Update location with new configuration
+    try {
+      await stripe.terminal.locations.update(
+        finalLocationId,
+        {
+          configuration_overrides: configuration.id,
+        },
+        { stripeAccount: accountId }
+      );
+      console.log(`✅ Location updated with tipping config: ${configuration.id}`);
+    } catch (updateError) {
+      console.warn(`⚠️ Failed to update location with config:`, updateError.message);
+      // Continue with payment creation even if update fails
+    }
+
+  } catch (error) {
+    // Catch any unexpected errors and log them
+    console.error('❌ Unexpected error in ensureLocationTippingConfig:', error);
+    // Don't throw - continue with payment creation
+  }
+};
+
+/**
  * Validate user has an active Stripe account
  * @param {string} userId - User ID
  * @returns {Promise<string>} Stripe account ID
@@ -67,11 +186,17 @@ const buildPaymentMetadata = (userId, metadata = {}, customerDetails = {}) => {
  * @param {string} paymentData.currency - Currency code
  * @param {object} paymentData.metadata - Additional metadata
  * @param {object} paymentData.customerDetails - Customer details
+ * @param {object|null} paymentData.tippingConfig - Tipping configuration
  * @returns {Promise<object>} Payment intent with clientSecret and id
  */
 const createPaymentIntentService = async (accountId, paymentData) => {
   try {
-    const { amount, currency = 'usd', metadata = {}, customerDetails = {} } = paymentData;
+    const { 
+      amount, 
+      currency = 'usd', 
+      metadata = {}, 
+      customerDetails = {}
+    } = paymentData
 
     // Build metadata with customer details
     const paymentMetadata = buildPaymentMetadata(
@@ -404,6 +529,7 @@ const attachPaymentIntentToInvoiceService = async (accountId, invoiceId, payment
  * @param {string} invoiceData.id - Invoice ID
  * @param {object} paymentMetadata - Payment metadata
  * @param {string|null} customerId - Customer ID
+ * @param {object|null} tippingConfig - Tipping configuration
  * @returns {Promise<object>} Payment intent with clientSecret and id
  */
 const createPaymentIntentFromInvoiceService = async (
@@ -511,13 +637,22 @@ const groupChargesByDateService = (charges) => {
       statsByDate[chargeDate] = {
         date: chargeDate,
         count: 0,
-        totalAmount: 0, // In cents
+        totalAmount: 0, // In cents (includes tips)
         successful: 0,
         failed: 0,
+        totalTips: 0, // Total tips in cents
       };
     }
+    
+    // Extract tip amount from metadata or amount_details
+    const tipAmount = charge.metadata?.tipAmount 
+      ? parseInt(charge.metadata.tipAmount, 10) 
+      : (charge.amount_details?.tip?.amount || 0);
+    
     statsByDate[chargeDate].count += 1;
     statsByDate[chargeDate].totalAmount += charge.amount; // Keep in cents
+    statsByDate[chargeDate].totalTips += tipAmount; // Track tips separately
+    
     if (charge.status === 'succeeded' && charge.paid) {
       statsByDate[chargeDate].successful += 1;
     } else {
@@ -531,18 +666,20 @@ const groupChargesByDateService = (charges) => {
 /**
  * Calculate summary from stats array
  * @param {Array} stats - Array of stats objects
- * @returns {object} Summary object with totalPayments, totalAmount, averageAmount
+ * @returns {object} Summary object with totalPayments, totalAmount, averageAmount, totalTips
  */
 const calculateSummaryService = (stats) => {
   const totalPayments = stats.reduce((sum, stat) => sum + stat.count, 0);
   const totalAmount = stats.reduce((sum, stat) => sum + stat.totalAmount, 0); // In cents
+  const totalTips = stats.reduce((sum, stat) => sum + (stat.totalTips || 0), 0); // In cents
   const averageAmount =
     totalPayments > 0 ? Math.round(totalAmount / totalPayments) : 0; // In cents
 
   return {
     totalPayments,
-    totalAmount, // In cents
+    totalAmount, // In cents (includes tips)
     averageAmount, // In cents
+    totalTips, // In cents
   };
 };
 
@@ -570,6 +707,7 @@ const fillMissingDaysService = (statsByDate, startDate, endDate) => {
         totalAmount: 0,
         successful: 0,
         failed: 0,
+        totalTips: 0, // Include totalTips in filled days
       });
     }
     currentDate.setDate(currentDate.getDate() + 1);
@@ -748,24 +886,38 @@ const getTransactionsService = async (accountId, date = null) => {
     // Sort charges by created time (newest first)
     const sortedCharges = charges.sort((a, b) => b.created - a.created);
 
-    // Map charges to transaction format with refunded status
-    return sortedCharges.map(charge => ({
-      id: charge.id,
-      amount: charge.amount, // Already in cents
-      currency: charge.currency,
-      status: charge.status,
-      created: charge.created,
-      customer: charge.customer,
-      payment_method: charge.payment_method,
-      receipt_url: charge.receipt_url,
-      description: charge.description,
-      receipt_email: charge.receipt_email || charge.billing_details?.email || charge.metadata?.customerEmail || null,
-      customerEmail: charge.billing_details?.email || charge.metadata?.customerEmail || null,
-      customerName: charge.billing_details?.name || charge.metadata?.customerName || null,
-      paid: charge.paid || false,
-      refunded: charge.refunded || charge.amount_refunded > 0 || false,
-      metadata: charge.metadata || {},
-    }));
+    // Map charges to transaction format with refunded status and tip details
+    return sortedCharges.map(charge => {
+      // Extract tip amount from metadata or amount_details
+      const tipAmount = charge.metadata?.tipAmount 
+        ? parseInt(charge.metadata.tipAmount, 10) 
+        : (charge.amount_details?.tip?.amount || 0);
+      
+      const tippingMethod = charge.metadata?.tippingMethod || null;
+      const baseAmount = charge.amount - tipAmount;
+
+      return {
+        id: charge.id,
+        amount: charge.amount, // Total amount in cents
+        currency: charge.currency,
+        status: charge.status,
+        created: charge.created,
+        customer: charge.customer,
+        payment_method: charge.payment_method,
+        receipt_url: charge.receipt_url,
+        description: charge.description,
+        receipt_email: charge.receipt_email || charge.billing_details?.email || charge.metadata?.customerEmail || null,
+        customerEmail: charge.billing_details?.email || charge.metadata?.customerEmail || null,
+        customerName: charge.billing_details?.name || charge.metadata?.customerName || null,
+        paid: charge.paid || false,
+        refunded: charge.refunded || charge.amount_refunded > 0 || false,
+        metadata: charge.metadata || {},
+        // Tip details
+        tipAmount, // Tip amount in cents
+        tippingMethod, // 'on-reader', 'app-based', or null
+        baseAmount, // Base amount (excluding tip) in cents
+      };
+    });
   } catch (error) {
     if (error.statusCode) {
       throw error;
@@ -841,6 +993,7 @@ const createRefundService = async (accountId, chargeId, refundData = {}) => {
 module.exports = {
   validateStripeAccount,
   buildPaymentMetadata,
+  ensureLocationTippingConfig,
   createPaymentIntentService,
   findOrCreateCustomerService,
   createInvoiceService,

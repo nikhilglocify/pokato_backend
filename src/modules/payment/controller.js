@@ -1,6 +1,7 @@
 const { successResponse, errorResponse } = require('../../utils/response.js');
 const {
   validateStripeAccount,
+  ensureLocationTippingConfig,
   createPaymentIntentService,
   findOrCreateCustomerService,
   createInvoiceService,
@@ -27,6 +28,9 @@ const createPaymentIntent = async (req, res, next) => {
       currency = 'usd',
       metadata = {},
       customerDetails = {},
+      readerId,
+      connectionType,
+      locationId,
     } = req.body;
 
     // Validate amount
@@ -38,8 +42,12 @@ const createPaymentIntent = async (req, res, next) => {
         );
     }
 
+
     // Validate Stripe account and get account ID
     const accountId = await validateStripeAccount(userId);
+
+    // Ensure location has tipping config for internet readers
+    await ensureLocationTippingConfig(accountId, readerId, connectionType, locationId);
 
     // Call service to create payment intent
     const result = await createPaymentIntentService(accountId, {
@@ -93,7 +101,13 @@ const getPaymentStats = async (req, res, next) => {
 const createPaymentIntentFromProducts = async (req, res, next) => {
   try {
     const userId = req.user.userId;
-    const { cartItems = [], customerDetails = {} } = req.body;
+    const { 
+      cartItems = [], 
+      customerDetails = {},
+      readerId,
+      connectionType,
+      locationId,
+    } = req.body;
 
     // Validate cartItems
     if (!Array.isArray(cartItems) || cartItems.length === 0) {
@@ -136,8 +150,12 @@ const createPaymentIntentFromProducts = async (req, res, next) => {
       }
     }
 
+
     // Validate Stripe account and get account ID
     const accountId = await validateStripeAccount(userId);
+
+    // Ensure location has tipping config for internet readers
+    await ensureLocationTippingConfig(accountId, readerId, connectionType, locationId);
 
     // Step 1: Create or retrieve Stripe Customer if email provided
     const customerId = await findOrCreateCustomerService(
